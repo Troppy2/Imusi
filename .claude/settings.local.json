@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(npm install react-native-worklets --legacy-peer-deps)"
+    ]
+  }
+}
