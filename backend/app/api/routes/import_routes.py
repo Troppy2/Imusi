@@ -1,6 +1,7 @@
 """
 Import API: POST /import/file, POST /import/folder (async), GET /import/folder/status/{job_id}, GET /import/folder/jobs.
 Folder import runs as a background task; single-file import remains synchronous.
+Uses DB-backed ImportJob model for persistent job tracking.
 """
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
@@ -10,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import BadRequestError, NotFoundError
 from app.core.logging_config import get_logger
 from app.db.session import get_db
-from app.services.import_service import import_single_file, import_folder
+from app.services.import_service import import_single_file
 from app.services.import_tasks import (
     create_folder_import_job,
     get_import_job,
@@ -82,7 +83,7 @@ def get_folder_import_status(job_id: str):
     job = get_import_job(job_id)
     if not job:
         raise NotFoundError("Import job not found", resource="import_job", resource_id=job_id)
-    return job.to_dict()
+    return job
 
 
 @router.get("/folder/jobs")
@@ -91,4 +92,4 @@ def list_folder_import_jobs(limit: int = 50):
     List recent folder import jobs (newest first). Max limit 100.
     """
     jobs = list_import_jobs(limit=min(limit, 100))
-    return {"jobs": [j.to_dict() for j in jobs], "count": len(jobs)}
+    return {"jobs": jobs, "count": len(jobs)}

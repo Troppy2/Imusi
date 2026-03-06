@@ -62,11 +62,20 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str | None = None
     GOOGLE_CLIENT_SECRET: str | None = None
 
+    # OAuth (Spotify)
+    SPOTIFY_CLIENT_ID: str | None = None
+    SPOTIFY_CLIENT_SECRET: str | None = None
+
     # Library import
     AUTO_IMPORT_GLOBAL_SONGS_ON_STARTUP: bool = True
     GLOBAL_SONGS_DIR: str = str(DEFAULT_GLOBAL_SONGS_DIR)
     GLOBAL_SONGS_WATCH_ENABLED: bool = True
     GLOBAL_SONGS_WATCH_INTERVAL_SECONDS: int = 5
+
+    # Spotify-to-Local download pipeline
+    MUSIC_DOWNLOAD_DIR: str = str(Path(__file__).resolve().parents[2] / "music")
+    DOWNLOAD_AUDIO_FORMAT: str = "mp3"
+    DOWNLOAD_AUDIO_QUALITY: str = "192"
 
     # Logging
     LOG_LEVEL: str = "INFO"

@@ -157,13 +157,17 @@ def import_folder(
         if path.suffix.lower() not in SUPPORTED_AUDIO_EXTENSIONS:
             continue
         abs_path = str(path.resolve())
-        song = import_single_file(db, abs_path, artwork_output_dir=artwork_output_dir)
-        if song:
-            imported.append(song)
-        if folder_record:
-            existing_song = song or _get_song_by_path(db, abs_path)
-            if existing_song and not _folder_song_link_exists(db, folder_record.id, existing_song.id):
-                db.add(FolderSong(folder_id=folder_record.id, song_id=existing_song.id))
+        try:
+            song = import_single_file(db, abs_path, artwork_output_dir=artwork_output_dir)
+            if song:
+                imported.append(song)
+            if folder_record:
+                existing_song = song or _get_song_by_path(db, abs_path)
+                if existing_song and not _folder_song_link_exists(db, folder_record.id, existing_song.id):
+                    db.add(FolderSong(folder_id=folder_record.id, song_id=existing_song.id))
+        except Exception:
+            logger.warning("Import skipped: error processing file", extra={"file_path": abs_path})
+            continue
 
     if create_folder_record and folder_record:
         db.flush()

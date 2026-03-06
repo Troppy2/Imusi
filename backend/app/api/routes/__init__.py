@@ -14,6 +14,7 @@ from app.api.routes import (
     playlists,
     recently_played,
     search,
+    spotify,
     stream,
 )
 
@@ -29,3 +30,4 @@ api_router.include_router(folders.router, prefix="/folders", tags=["folders"])
 api_router.include_router(playlists.router, prefix="/playlists", tags=["playlists"])
 api_router.include_router(recently_played.router, prefix="/recently-played", tags=["recently-played"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
+api_router.include_router(spotify.router, prefix="/spotify", tags=["spotify"])

@@ -1,15 +1,18 @@
 """
 Background folder import tasks: job store and sync runner for async folder scanning.
 Runs the actual scan in a thread pool so the API worker is not blocked.
+Now uses persistent ImportJob DB model instead of in-memory dict.
 """
+import json
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+
+from sqlalchemy import select
 
 from app.core.logging_config import get_logger
 from app.db.session import SessionLocal
+from app.models.import_job import ImportJob
 from app.services.import_service import import_folder
 
 logger = get_logger(__name__)
@@ -18,61 +21,56 @@ logger = get_logger(__name__)
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="import_folder")
 
 
-@dataclass
-class ImportJobStatus:
-    """Status of a folder import job."""
-
-    job_id: str
-    folder_path: str
-    status: str  # pending | running | completed | failed
-    created_at: datetime
-    updated_at: datetime | None = None
-    result: dict[str, Any] | None = None  # imported_count, folder_id, songs | error
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "job_id": self.job_id,
-            "folder_path": self.folder_path,
-            "status": self.status,
-            "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "result": self.result,
-        }
-
-
-# In-memory job store (single process). For multi-worker deployments use Redis/DB.
-# Capped at 500 jobs; oldest evicted when full.
-_MAX_JOBS = 500
-_import_jobs: dict[str, ImportJobStatus] = {}
-
-
 def create_folder_import_job(folder_path: str) -> str:
-    """Create a new pending job and return job_id."""
-    while len(_import_jobs) >= _MAX_JOBS:
-        oldest = min(_import_jobs.items(), key=lambda x: x[1].created_at)
-        del _import_jobs[oldest[0]]
+    """Create a new pending job in the database and return job_id."""
     job_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc)
-    _import_jobs[job_id] = ImportJobStatus(
-        job_id=job_id,
-        folder_path=folder_path,
-        status="pending",
-        created_at=now,
-        updated_at=None,
-        result=None,
-    )
+    db = SessionLocal()
+    try:
+        job = ImportJob(
+            job_id=job_id,
+            job_type="folder",
+            status="pending",
+            folder_path=folder_path,
+            progress=0,
+            total=0,
+        )
+        db.add(job)
+        db.commit()
+        logger.info("Folder import job created", extra={"job_id": job_id, "folder_path": folder_path})
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to create folder import job")
+    finally:
+        db.close()
     return job_id
 
 
-def get_import_job(job_id: str) -> ImportJobStatus | None:
-    """Return job status if it exists."""
-    return _import_jobs.get(job_id)
+def get_import_job(job_id: str) -> dict | None:
+    """Return job status dict if it exists, or None."""
+    db = SessionLocal()
+    try:
+        stmt = select(ImportJob).where(ImportJob.job_id == job_id)
+        job = db.execute(stmt).scalar_one_or_none()
+        if not job:
+            return None
+        return job.to_dict()
+    finally:
+        db.close()
 
 
-def list_import_jobs(limit: int = 50) -> list[ImportJobStatus]:
-    """Return most recent jobs (newest first)."""
-    jobs = sorted(_import_jobs.values(), key=lambda j: j.created_at, reverse=True)
-    return jobs[:limit]
+def list_import_jobs(limit: int = 50) -> list[dict]:
+    """Return most recent jobs (newest first) as dicts."""
+    db = SessionLocal()
+    try:
+        stmt = (
+            select(ImportJob)
+            .order_by(ImportJob.created_at.desc())
+            .limit(limit)
+        )
+        jobs = db.execute(stmt).scalars().all()
+        return [j.to_dict() for j in jobs]
+    finally:
+        db.close()
 
 
 def _run_folder_import_sync(job_id: str, folder_path: str) -> None:
@@ -80,38 +78,64 @@ def _run_folder_import_sync(job_id: str, folder_path: str) -> None:
     Run folder import in a background thread. Uses its own DB session.
     Updates job status to running, then completed or failed.
     """
-    job = _import_jobs.get(job_id)
-    if not job or job.status != "pending":
-        return
-    now = datetime.now(timezone.utc)
-    job.status = "running"
-    job.updated_at = now
-
     db = SessionLocal()
     try:
+        # Update to running
+        stmt = select(ImportJob).where(ImportJob.job_id == job_id)
+        job = db.execute(stmt).scalar_one_or_none()
+        if not job or job.status != "pending":
+            return
+
+        job.status = "running"
+        job.started_at = datetime.now(timezone.utc)
+        job.updated_at = datetime.now(timezone.utc)
+        db.commit()
+
         logger.info("Background folder import started", extra={"job_id": job_id, "folder_path": folder_path})
         imported, folder = import_folder(db, folder_path, create_folder_record=True)
         db.commit()
+
         for s in imported:
             db.refresh(s)
         if folder:
             db.refresh(folder)
-        job.status = "completed"
-        job.updated_at = datetime.now(timezone.utc)
-        job.result = {
+
+        # Update to completed
+        result = {
             "imported_count": len(imported),
             "folder_id": folder.id if folder else None,
             "song_ids": [s.id for s in imported],
         }
+
+        stmt = select(ImportJob).where(ImportJob.job_id == job_id)
+        job = db.execute(stmt).scalar_one_or_none()
+        if job:
+            job.status = "completed"
+            job.progress = len(imported)
+            job.total = len(imported)
+            job.result_json = json.dumps(result)
+            job.completed_at = datetime.now(timezone.utc)
+            job.updated_at = datetime.now(timezone.utc)
+            db.commit()
+
         logger.info(
             "Background folder import completed",
             extra={"job_id": job_id, "imported_count": len(imported), "folder_id": folder.id if folder else None},
         )
     except Exception as e:
+        db.rollback()
         logger.exception("Background folder import failed", extra={"job_id": job_id, "folder_path": folder_path})
-        job.status = "failed"
-        job.updated_at = datetime.now(timezone.utc)
-        job.result = {"error": str(e)}
+
+        try:
+            stmt = select(ImportJob).where(ImportJob.job_id == job_id)
+            job = db.execute(stmt).scalar_one_or_none()
+            if job:
+                job.status = "failed"
+                job.error = str(e)
+                job.updated_at = datetime.now(timezone.utc)
+                db.commit()
+        except Exception:
+            db.rollback()
     finally:
         db.close()
 
@@ -122,5 +146,9 @@ def schedule_folder_import(job_id: str, folder_path: str) -> None:
     Call from an async route so the event loop is available; returns immediately.
     """
     import asyncio
-    loop = asyncio.get_event_loop()
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
     loop.run_in_executor(_executor, _run_folder_import_sync, job_id, folder_path)

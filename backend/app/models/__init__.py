@@ -13,6 +13,7 @@ from app.models.playlist_song import PlaylistSong
 from app.models.recently_played import RecentlyPlayed
 from app.models.user import User
 from app.models.refresh_token import RefreshToken
+from app.models.import_job import ImportJob
 
 __all__ = [
     "Base",
@@ -27,4 +28,5 @@ __all__ = [
     "RecentlyPlayed",
     "User",
     "RefreshToken",
+    "ImportJob",
 ]
