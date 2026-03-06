@@ -55,12 +55,20 @@ def _auto_import_global_songs() -> None:
         db.close()
 
 
+def _ensure_tables() -> None:
+    """Create all tables if they don't exist (safe for both SQLite and PostgreSQL)."""
+    from app.models import Base
+    from app.db.session import engine
+    Base.metadata.create_all(bind=engine)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: configure logging. Shutdown: optional cleanup."""
+    """Startup: configure logging, ensure tables, import songs. Shutdown: cleanup."""
     settings = get_settings()
     configure_logging(level=settings.LOG_LEVEL)
     logger.info("Application startup", extra={"log_level": settings.LOG_LEVEL})
+    _ensure_tables()
     _auto_import_global_songs()
     if settings.GLOBAL_SONGS_WATCH_ENABLED:
         start_global_songs_watcher(
@@ -200,6 +208,11 @@ def create_application() -> FastAPI:
     @app.get("/", include_in_schema=False)
     def root_redirect():
         return RedirectResponse(url="/docs", status_code=307)
+
+    @app.get("/health", tags=["health"])
+    def health_check():
+        """Health check endpoint for load balancers and monitoring."""
+        return {"status": "ok", "version": "1.0.0"}
 
     # Exception handlers for consistent error responses
     @app.exception_handler(AppException)

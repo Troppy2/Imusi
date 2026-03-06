@@ -1,6 +1,7 @@
 """
 Database session management and FastAPI dependency.
 Uses SQLAlchemy 2.0 style with sync engine/session.
+Supports both SQLite (local dev) and PostgreSQL (production).
 """
 from collections.abc import Generator
 from sqlalchemy import create_engine, event
@@ -11,20 +12,29 @@ from app.core.config import ensure_sqlite_directory, get_settings
 
 
 settings = get_settings()
-ensure_sqlite_directory(settings.DATABASE_URL)
 
-db_url = make_url(settings.DATABASE_URL)
-engine_kwargs = {
-    "pool_pre_ping": True,  # Verify connections before use
-    "echo": False,  # Set True for SQL logging during development
+_raw_url = settings.DATABASE_URL
+
+# Render and some providers use "postgres://" which SQLAlchemy 2.0 doesn't accept
+if _raw_url.startswith("postgres://"):
+    _raw_url = _raw_url.replace("postgres://", "postgresql://", 1)
+
+ensure_sqlite_directory(_raw_url)
+
+db_url = make_url(_raw_url)
+engine_kwargs: dict = {
+    "pool_pre_ping": True,
+    "echo": False,
 }
+
 if db_url.get_backend_name() == "sqlite":
     engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    # PostgreSQL connection pool settings for production
+    engine_kwargs["pool_size"] = 5
+    engine_kwargs["max_overflow"] = 10
 
-engine = create_engine(
-    settings.DATABASE_URL,
-    **engine_kwargs,
-)
+engine = create_engine(_raw_url, **engine_kwargs)
 
 if db_url.get_backend_name() == "sqlite":
     @event.listens_for(engine, "connect")

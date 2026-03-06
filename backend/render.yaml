@@ -1,0 +1,32 @@
+# Render Blueprint - deploy with "render blueprint apply"
+# Or connect this repo to Render and it will auto-detect this file.
+
+services:
+  - type: web
+    name: imusi-backend
+    runtime: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false  # Set manually in Render dashboard (Neon PostgreSQL URL)
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: ENVIRONMENT
+        value: production
+      - key: AUTO_IMPORT_GLOBAL_SONGS_ON_STARTUP
+        value: "false"
+      - key: GLOBAL_SONGS_WATCH_ENABLED
+        value: "false"
+      - key: RATE_LIMIT_ENABLED
+        value: "true"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+    rootDir: backend
+    healthCheckPath: /health

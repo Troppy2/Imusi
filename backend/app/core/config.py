@@ -17,8 +17,11 @@ DEFAULT_DATABASE_URL = f"sqlite:///{DEFAULT_SQLITE_DB_PATH.as_posix()}"
 class Settings(BaseSettings):
     """Application settings loaded from environment."""
 
-    # Database
+    # Database (override with DATABASE_URL env var for PostgreSQL in production)
     DATABASE_URL: str = DEFAULT_DATABASE_URL
+
+    # Environment
+    ENVIRONMENT: str = "development"
 
     # Optional Redis (for future caching)
     REDIS_URL: str | None = None
