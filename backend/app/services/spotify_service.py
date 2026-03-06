@@ -15,7 +15,7 @@ SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 SPOTIFY_API_BASE = "https://api.spotify.com/v1"
 
 
-@async_retry(max_attempts=3, base_delay=1.0, backoff_factor=2.0, retryable_exceptions=(httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException))
+@async_retry(max_attempts=3, base_delay=1.0, backoff_factor=2.0, retryable_exceptions=(httpx.ConnectError, httpx.TimeoutException))
 async def exchange_spotify_code(code: str, redirect_uri: str) -> dict:
     """Exchange an authorization code for Spotify access + refresh tokens."""
     settings = get_settings()
@@ -41,7 +41,7 @@ async def exchange_spotify_code(code: str, redirect_uri: str) -> dict:
         return data
 
 
-@async_retry(max_attempts=3, base_delay=1.0, backoff_factor=2.0, retryable_exceptions=(httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException))
+@async_retry(max_attempts=3, base_delay=1.0, backoff_factor=2.0, retryable_exceptions=(httpx.ConnectError, httpx.TimeoutException))
 async def refresh_spotify_token(refresh_token: str) -> dict:
     """Refresh a Spotify access token."""
     settings = get_settings()

@@ -329,15 +329,7 @@ def schedule_download_pipeline(
     playlist_name: str,
 ) -> None:
     """Schedule the download pipeline to run in a background thread."""
-    import asyncio
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    loop.run_in_executor(
-        _download_executor,
+    _download_executor.submit(
         _run_download_pipeline_sync,
         job_id,
         access_token,
