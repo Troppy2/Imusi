@@ -1,7 +1,7 @@
 # IMUSI
 
 A self-hosted music streaming app. Import your own music library, stream from your server, and import playlists from Spotify — all from a clean mobile interface.
-
+* Side note: Theres some peak Clairo songs in the /songs
 ## Architecture
 
 ```
